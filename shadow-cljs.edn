@@ -10,4 +10,7 @@
                                                    re-frisk.preload]}}
                 :devtools        {:http-root    "resources/public"
                                   :http-port    8280
-                                  }}}}
+                                  }}
+          :karma-test {:target    :karma
+                       :output-to "target/karma-test.js"
+                       :ns-regexp "-test$"}}}

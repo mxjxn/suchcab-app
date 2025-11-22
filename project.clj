@@ -10,7 +10,14 @@
                  [reagent "0.8.1"]
                  [re-frame "0.10.9"]
                  [garden "1.3.9"]
-                 [ns-tracker "0.4.0"]]
+                 [ns-tracker "0.4.0"]
+                 ;; Backend dependencies
+                 [ring/ring-core "1.9.0"]
+                 [ring/ring-jetty-adapter "1.9.0"]
+                 [ring/ring-json "0.5.0"]
+                 [compojure "1.6.2"]
+                 [ring-cors "0.1.13"]
+                 [buddy/buddy-hashers "1.8.1"]]
 
   :plugins [[lein-garden "0.3.0"]
             [lein-shell "0.5.0"]]
@@ -48,7 +55,8 @@
             "karma"        ["with-profile" "prod" "do"
                             ["clean"]
                             ["run" "-m" "shadow.cljs.devtools.cli" "compile" "karma-test"]
-                            ["shell" "karma" "start" "--single-run" "--reporters" "junit,dots"]]}
+                            ["shell" "karma" "start" "--single-run" "--reporters" "junit,dots"]]
+            "server"       ["run" "-m" "suchcab-app.server"]}
 
   :profiles
   {:dev
