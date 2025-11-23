@@ -1,0 +1,823 @@
+# Such.cab App - Complete LLM Documentation
+
+## Project Overview
+
+Such.cab is a ClojureScript web application built with re-frame, React, and Material-UI. Currently implements a complete user authentication system with plans to expand into a Farcaster-based sponsorship auction platform for pedicab media content.
+
+**Current Status**: Authentication infrastructure complete (login, signup, session management)
+**Future Direction**: Weekly auction system for YouTube video sponsorships on Farcaster
+
+## Technology Stack
+
+### Frontend
+- **ClojureScript 1.10.520** - Compiles to JavaScript
+- **React 16.8.6** - UI rendering
+- **re-frame 0.10.9** - Unidirectional data flow (flux architecture)
+- **Reagent 0.8.1** - React wrapper for ClojureScript with hiccup syntax
+- **Material-UI 4.5.2** - Material Design components
+- **Garden 1.3.9** - CSS-in-Clojure
+- **cljs-ajax 0.8.0** - AJAX/HTTP requests
+
+### Backend
+- **Clojure 1.10.1** - JVM-based Lisp
+- **Ring 1.9.0** - HTTP server abstraction
+- **Compojure 1.6.2** - Routing DSL
+- **Buddy 1.8.1** - Password hashing/security
+- **ring-json 0.5.0** - JSON middleware
+- **ring-cors 0.1.13** - CORS handling
+
+### Build Tools
+- **shadow-cljs 2.8.68** - ClojureScript compiler with hot reload
+- **Leiningen 2.5.3+** - Project automation
+- **npm** - JavaScript package management
+
+## Architecture
+
+### re-frame Data Flow
+
+```
+View -> Event -> Effect Handler -> Database Update -> Subscription -> View
+```
+
+1. **Views** (views.cljs) - React components that subscribe to state
+2. **Events** (events.cljs) - Handle user actions, trigger side effects
+3. **Effects** - HTTP calls, local storage, etc.
+4. **Database** (db.cljs) - Single immutable atom containing app state
+5. **Subscriptions** (subs.cljs) - Derived data queries from database
+6. **Components** (components.cljs) - Reusable Material-UI wrappers
+
+### Current Database Schema
+
+```clojure
+{:current-view :login          ; :login or :dashboard
+ :user nil                     ; {:email "..." :created-at "..."}
+ :loading false                ; true during async operations
+ :error nil                    ; "Error message string"
+ :success nil                  ; "Success message string"
+ :form-errors {}}              ; {:email "..." :password "..."}
+```
+
+## File Structure
+
+```
+suchcab-app/
+├── src/
+│   ├── clj/                              # Backend Clojure code
+│   │   └── suchcab_app/
+│   │       ├── server.clj                # Ring/Compojure API server
+│   │       └── css.clj                   # Garden CSS definitions
+│   └── cljs/                             # Frontend ClojureScript code
+│       └── suchcab_app/
+│           ├── core.cljs                 # App initialization
+│           ├── views.cljs                # React components (LoginPanel, Dashboard)
+│           ├── components.cljs           # Material-UI component wrappers
+│           ├── events.cljs               # Event handlers (login, signup, logout)
+│           ├── subs.cljs                 # Subscriptions (data queries)
+│           ├── db.cljs                   # Database schema
+│           └── config.cljs               # Configuration values
+├── test/
+│   └── cljs/
+│       └── suchcab_app/
+│           └── events_test.cljs          # Unit tests for validation
+├── resources/
+│   └── public/
+│       ├── index.html                    # HTML entry point
+│       ├── js/compiled/                  # Compiled ClojureScript output
+│       └── css/                          # Generated CSS from Garden
+├── project.clj                           # Leiningen dependencies & config
+├── shadow-cljs.edn                       # shadow-cljs build config
+├── package.json                          # npm dependencies
+├── karma.conf.js                         # Test runner config
+└── README.md                             # User documentation
+```
+
+## Key Files Explained
+
+### src/clj/suchcab_app/server.clj
+
+Backend API server with in-memory user storage.
+
+**Key Functions:**
+- `create-user!` - Hashes password, stores user in atom
+- `authenticate-user` - Verifies password against hash
+- `validate-email` - Regex validation for email format
+- `validate-password` - Minimum 6 character check
+
+**API Endpoints:**
+- `POST /api/user/create` - Create account
+- `POST /api/user/login` - Authenticate user
+- `POST /api/math/plus` - Test endpoint (legacy)
+- `GET /api/health` - Health check
+
+**Middleware Stack:**
+1. `wrap-cors` - Allow cross-origin requests
+2. `wrap-json-response` - Serialize responses as JSON
+3. `wrap-json-body` - Parse JSON request bodies
+
+**Start Server:**
+```bash
+lein server  # Runs on port 3000
+```
+
+### src/cljs/suchcab_app/core.cljs
+
+Application entry point.
+
+```clojure
+(defn init []
+  (re-frame/dispatch-sync [::events/initialize-db])
+  (dev-setup)
+  (mount-root))
+```
+
+- `initialize-db` - Sets up initial app state
+- `mount-root` - Renders React app to DOM element with id "app"
+- Called automatically by shadow-cljs on page load
+
+### src/cljs/suchcab_app/db.cljs
+
+Application state schema. Single source of truth.
+
+```clojure
+(def default-db
+  {:current-view :login
+   :user nil
+   :loading false
+   :error nil
+   :success nil
+   :form-errors {}})
+```
+
+All state mutations happen through events, never directly.
+
+### src/cljs/suchcab_app/events.cljs
+
+Event handlers that modify state and trigger side effects.
+
+**Validation Functions:**
+```clojure
+(defn validate-email [email]
+  (re-matches #"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$" email))
+
+(defn validate-password [password]
+  (>= (count password) 6))
+
+(defn validate-credentials [email password]
+  ; Returns map of errors: {:email "..." :password "..."}
+  ; Empty map means valid
+  )
+```
+
+**Key Events:**
+
+1. `::initialize-db` - Set initial state
+   ```clojure
+   (reg-event-db ::initialize-db
+     (fn [_ _] db/default-db))
+   ```
+
+2. `:login-request/login` - Initiate login
+   ```clojure
+   (reg-event-fx :login-request/login
+     (fn [{:keys [db]} [_ email password]]
+       ; Validate credentials
+       ; If valid: trigger HTTP POST to /api/user/login
+       ; If invalid: set :form-errors in db
+       ))
+   ```
+
+3. `:login-success` - Handle successful login
+   ```clojure
+   (reg-event-db :login-success
+     (fn [db [_ response]]
+       (assoc db
+         :loading false
+         :current-view :dashboard
+         :user (:user response)
+         :success (:message response))))
+   ```
+
+4. `:login-failure` - Handle failed login
+5. `:login-request/signup` - Initiate signup
+6. `:signup-success` - Handle successful signup
+7. `:signup-failure` - Handle failed signup
+8. `:logout` - Clear user session
+9. `:clear-messages` - Dismiss alerts
+
+**HTTP Effects:**
+Uses `:http-xhrio` effect from day8.re-frame/http-fx:
+```clojure
+{:http-xhrio {:method :post
+              :uri "http://localhost:3000/api/user/login"
+              :params {:email email :password password}
+              :timeout 8000
+              :format (ajax/json-request-format)
+              :response-format (ajax/json-response-format {:keywords? true})
+              :on-success [:login-success]
+              :on-failure [:login-failure]}}
+```
+
+### src/cljs/suchcab_app/subs.cljs
+
+Subscriptions extract data from app database.
+
+```clojure
+(re-frame/reg-sub ::current-view
+  (fn [db] (:current-view db)))
+
+(re-frame/reg-sub ::user
+  (fn [db] (:user db)))
+
+(re-frame/reg-sub ::loading
+  (fn [db] (:loading db)))
+
+(re-frame/reg-sub ::error
+  (fn [db] (:error db)))
+
+(re-frame/reg-sub ::success
+  (fn [db] (:success db)))
+
+(re-frame/reg-sub ::form-errors
+  (fn [db] (:form-errors db)))
+```
+
+**Usage in Views:**
+```clojure
+(let [user @(rf/subscribe [::subs/user])
+      loading @(rf/subscribe [::subs/loading])]
+  ; Use values in component
+  )
+```
+
+### src/cljs/suchcab_app/views.cljs
+
+React components using Reagent's hiccup syntax.
+
+**Alert Component:**
+```clojure
+(defn Alert [{:keys [severity message on-close]}]
+  (when message
+    [:div {:style {...}}
+     [:span message]
+     [:button {:on-click on-close} "×"]]))
+```
+
+**LoginPanel Component:**
+- Local state: `(r/atom {:email "" :password ""})`
+- Subscribes to: loading, error, success, form-errors
+- Dispatches: `:login-request/login`, `:login-request/signup`, `:clear-messages`
+- Renders: email field, password field, login button, signup button
+- Form validation errors shown inline with `helperText`
+- Loading state disables inputs and changes button text
+
+**Dashboard Component:**
+- Subscribes to: user, success
+- Displays: user email, account creation date, logout button
+- Dispatches: `:logout`, `:clear-messages`
+
+**main-panel Component:**
+- Subscribes to: current-view
+- Routes between :login and :dashboard views
+- Renders AppBar with app title and conditional logout button
+
+**Hiccup Syntax:**
+```clojure
+[:div                          ; <div>
+ [:h1 "Title"]                 ;   <h1>Title</h1>
+ [:p {:class "text"} "Body"]]  ;   <p class="text">Body</p>
+                               ; </div>
+
+[Component {:prop "value"}]    ; <Component prop="value" />
+```
+
+### src/cljs/suchcab_app/components.cljs
+
+Material-UI component wrappers using `adapt-react-class`.
+
+```clojure
+(def AppBar (r/adapt-react-class (.-AppBar mui)))
+(def Button (r/adapt-react-class (.-Button mui)))
+(def Card (r/adapt-react-class (.-Card mui)))
+(def TextField (r/adapt-react-class (.-TextField mui)))
+; etc.
+```
+
+**Usage:**
+```clojure
+[Button {:color "primary"
+         :variant "contained"
+         :on-click #(rf/dispatch [:some-event])}
+ "Click Me"]
+```
+
+### src/clj/suchcab_app/css.clj
+
+Garden CSS definitions.
+
+```clojure
+(defstyles screen
+  [:body {:margin 0
+          :padding 0
+          :font-family "..."
+          :background-color "#f5f5f5"
+          :color "#333"}
+
+   [:.login-panel {:min-height "100vh"
+                   :display "flex"
+                   :align-items "center"
+                   :justify-content "center"}
+
+    [:.login-card {:box-shadow "0 2px 8px rgba(0,0,0,0.1)"
+                   :background-color "white"}]]])
+```
+
+**Compile CSS:**
+```bash
+lein garden once       # One-time compilation
+lein garden auto       # Watch for changes
+```
+
+Output: `resources/public/css/screen.css`
+
+### test/cljs/suchcab_app/events_test.cljs
+
+Unit tests using cljs.test.
+
+```clojure
+(deftest validate-email-test
+  (testing "Valid email addresses"
+    (is (true? (events/validate-email "user@example.com"))))
+
+  (testing "Invalid email addresses"
+    (is (false? (events/validate-email "not-an-email")))))
+```
+
+**Run Tests:**
+```bash
+lein karma
+```
+
+## API Documentation
+
+### POST /api/user/create
+
+Create a new user account.
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "mypassword"
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "user": {
+    "email": "user@example.com",
+    "created-at": "2025-11-23T..."
+  },
+  "message": "User created successfully"
+}
+```
+
+**Error Responses:**
+
+400 - Invalid email format:
+```json
+{"error": "Invalid email format"}
+```
+
+400 - Password too short:
+```json
+{"error": "Password must be at least 6 characters"}
+```
+
+409 - User already exists:
+```json
+{"error": "User already exists"}
+```
+
+### POST /api/user/login
+
+Authenticate a user.
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "mypassword"
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "user": {
+    "email": "user@example.com",
+    "created-at": "2025-11-23T..."
+  },
+  "message": "Login successful"
+}
+```
+
+**Error Response (401):**
+```json
+{"error": "Invalid email or password"}
+```
+
+### GET /api/health
+
+Health check endpoint.
+
+**Response (200):**
+```json
+{"status": "ok"}
+```
+
+## Development Workflow
+
+### Initial Setup
+
+```bash
+# Install dependencies
+lein deps
+npm install
+
+# Compile CSS
+lein garden auto  # Leave running in terminal
+```
+
+### Running the App
+
+```bash
+# Terminal 1: Backend server
+lein server  # http://localhost:3000
+
+# Terminal 2: Frontend dev server
+lein dev  # http://localhost:8280
+
+# Terminal 3: CSS auto-compilation
+lein garden auto
+```
+
+### Development Features
+
+**Hot Reloading:**
+- ClojureScript changes automatically reload in browser
+- CSS changes require manual recompilation (or use `lein garden auto`)
+- Backend changes require server restart
+
+**REPL:**
+- nREPL server on port 8777
+- Connect from Emacs/Cursive/VS Code
+- Evaluate code in running browser context
+
+**DevTools:**
+- Browser console shows re-frame events
+- re-frisk debugger for state inspection
+- React DevTools for component inspection
+
+### Build Commands
+
+```bash
+# Development build with hot reload
+lein dev
+
+# Production build (minified)
+lein prod
+
+# Build size analysis
+lein build-report
+
+# Run tests
+lein karma
+
+# Start backend only
+lein server
+```
+
+### Project Configuration Files
+
+**project.clj** - Leiningen configuration
+- Dependencies
+- Build profiles (:dev, :prod)
+- Aliases (dev, prod, server, karma)
+- JVM options
+- Plugin configuration
+
+**shadow-cljs.edn** - ClojureScript compiler
+- Build targets (:app, :karma-test)
+- Output directories
+- Dev server port (8280)
+- nREPL port (8777)
+- Preloads for devtools
+
+**package.json** - npm dependencies
+- React, React DOM
+- Material-UI
+- shadow-cljs
+- create-react-class
+
+## Common Patterns
+
+### Adding a New Event
+
+1. Define event handler in `events.cljs`:
+```clojure
+(reg-event-db
+ :my-event
+ (fn [db [_ arg1 arg2]]
+   (assoc db :some-key (process arg1 arg2))))
+```
+
+2. Dispatch from view:
+```clojure
+(rf/dispatch [:my-event "value1" "value2"])
+```
+
+### Adding a New Subscription
+
+1. Define in `subs.cljs`:
+```clojure
+(re-frame/reg-sub
+ ::my-data
+ (fn [db]
+   (get-in db [:path :to :data])))
+```
+
+2. Subscribe in view:
+```clojure
+(let [data @(rf/subscribe [::subs/my-data])]
+  [:div (str "Data: " data)])
+```
+
+### Adding a New View
+
+1. Create component function in `views.cljs`:
+```clojure
+(defn MyView []
+  (let [data @(rf/subscribe [::subs/some-data])]
+    [:div
+     [Typography "My View"]
+     [:p (str data)]]))
+```
+
+2. Add route in `main-panel`:
+```clojure
+(case current-view
+  :login [LoginPanel]
+  :dashboard [Dashboard]
+  :my-view [MyView]     ; Add this
+  [LoginPanel])
+```
+
+3. Navigate by changing `:current-view` in db:
+```clojure
+(rf/dispatch [:navigate-to :my-view])
+
+; And add event:
+(reg-event-db
+ :navigate-to
+ (fn [db [_ view]]
+   (assoc db :current-view view)))
+```
+
+### Adding a New API Endpoint
+
+1. Add route in `server.clj`:
+```clojure
+(defroutes app-routes
+  ; existing routes...
+  (POST "/api/my-endpoint" [] my-handler)
+  ; ...
+  )
+```
+
+2. Create handler function:
+```clojure
+(defn my-handler [request]
+  (let [{:keys [param1 param2]} (:body request)]
+    (response {:result (+ param1 param2)})))
+```
+
+3. Call from frontend event:
+```clojure
+(reg-event-fx
+ :call-my-endpoint
+ (fn [{:keys [db]} [_ param1 param2]]
+   {:http-xhrio {:method :post
+                 :uri "http://localhost:3000/api/my-endpoint"
+                 :params {:param1 param1 :param2 param2}
+                 :format (ajax/json-request-format)
+                 :response-format (ajax/json-response-format {:keywords? true})
+                 :on-success [:endpoint-success]
+                 :on-failure [:endpoint-failure]}}))
+```
+
+## Security Considerations
+
+**Current Implementation (Development Only):**
+- Users stored in memory (lost on restart)
+- No session tokens/JWT
+- No HTTPS
+- No rate limiting
+- No CSRF protection
+- Passwords hashed with Buddy (bcrypt)
+- CORS allows all origins
+
+**For Production:**
+- Migrate to persistent database (PostgreSQL, Datomic)
+- Implement JWT/session tokens
+- Add HTTPS/TLS
+- Rate limit authentication endpoints
+- Implement CSRF tokens
+- Restrict CORS to specific domains
+- Add input sanitization
+- Implement account recovery
+- Add email verification
+- Add 2FA support
+
+## Future Development (Farcaster Auction App)
+
+### Planned Features
+
+1. **Farcaster Authentication**
+   - Replace email/password with Farcaster login
+   - Use Farcaster identity for user accounts
+
+2. **Auction System**
+   - Weekly English auctions (highest bid wins)
+   - Create/view/bid on auctions
+   - Auto-close at deadline
+   - Winner notification
+
+3. **Web3 Integration**
+   - Wallet connection (Coinbase Wallet, WalletConnect)
+   - Smart contracts for escrow
+   - Base L2 for low-cost transactions
+
+4. **Sponsorship Management**
+   - Define deliverables (video shoutout, logo, etc.)
+   - Track delivery status
+   - Sponsor profile pages
+   - Historical auction data
+
+5. **Farcaster Frame**
+   - Embed auction UI in Farcaster feeds
+   - Direct bidding from social feed
+   - Real-time updates
+
+### Technical Additions Needed
+
+**Dependencies:**
+- Web3.js or ethers.js for blockchain interaction
+- WalletConnect for wallet connection
+- Farcaster SDK for auth/frames
+- WebSocket library for real-time updates
+- Smart contract tooling (Solidity, Hardhat)
+
+**Database Schema:**
+```clojure
+{:auctions [{:id "uuid"
+             :title "Week 45 Sponsorship"
+             :description "..."
+             :start-time #inst "..."
+             :end-time #inst "..."
+             :min-bid 0.1
+             :current-bid 0.5
+             :current-winner "0x..."
+             :status :active  ; :active, :ended, :delivered
+             :deliverables [{:type :video-shoutout :duration 30}]
+             :bids [{:bidder "0x..." :amount 0.3 :timestamp #inst "..."}]}]
+ :users [{:fid 12345                    ; Farcaster ID
+          :wallet "0x..."
+          :username "user"
+          :bio "..."
+          :auction-wins []
+          :total-spent 0}]
+ :sponsorships [{:auction-id "uuid"
+                 :sponsor "0x..."
+                 :amount 0.5
+                 :delivered? false
+                 :proof-url "https://youtube.com/..."}]}
+```
+
+**New Views:**
+- AuctionList - Browse active/past auctions
+- AuctionDetail - Bid, view history, deliverables
+- CreateAuction - Admin only
+- SponsorProfile - User's auction history
+- DeliveryVerification - Proof of sponsorship delivery
+
+**New Events:**
+- :create-auction
+- :place-bid
+- :close-auction
+- :declare-winner
+- :mark-delivered
+- :connect-wallet
+- :farcaster-auth
+
+## Troubleshooting
+
+### Common Issues
+
+**"lein: command not found"**
+- Install Leiningen: https://leiningen.org/#install
+
+**"Cannot connect to nREPL server"**
+- Ensure `lein dev` is running
+- Check port 8777 is not blocked
+
+**"Module not found" errors**
+- Run `npm install`
+- Delete `node_modules` and reinstall
+
+**CSS changes not appearing**
+- Run `lein garden once` to recompile
+- Hard refresh browser (Ctrl+Shift+R)
+
+**Backend not responding**
+- Check server is running on port 3000
+- Check CORS headers in browser console
+- Verify request format matches API expectations
+
+**Re-frame state not updating**
+- Check event is dispatched: `(rf/dispatch [:event])`
+- Check event handler is registered: `(reg-event-db :event ...)`
+- Check subscription is dereferenced: `@(rf/subscribe [::sub])`
+- Open re-frisk debugger to inspect events
+
+## Code Style Guidelines
+
+**Naming Conventions:**
+- Events: kebab-case keywords `:login-request/login`
+- Subscriptions: namespaced keywords `::subs/user`
+- Functions: kebab-case `validate-email`
+- Namespaces: snake_case `suchcab_app.events`
+
+**Indentation:**
+- 2 spaces per level
+- Align closing parens vertically
+- Break long parameter lists
+
+**Documentation:**
+- Add docstrings to public functions
+- Comment complex logic
+- Use meaningful variable names
+
+**Testing:**
+- Test pure functions (validation, data transformations)
+- Mock HTTP calls for integration tests
+- Use descriptive test names
+
+## Resources
+
+**ClojureScript:**
+- https://clojurescript.org/
+- https://clojure.org/guides/learn/syntax
+
+**re-frame:**
+- https://day8.github.io/re-frame/
+- https://github.com/day8/re-frame
+
+**Reagent:**
+- https://reagent-project.github.io/
+
+**Material-UI:**
+- https://v4.mui.com/
+
+**shadow-cljs:**
+- https://shadow-cljs.github.io/docs/UsersGuide.html
+
+**Garden CSS:**
+- https://github.com/noprompt/garden
+
+## Current Codebase Stats
+
+- **Lines of Code:** ~1,200
+- **Files:** 12 source files, 1 test file
+- **Components:** 4 (Alert, LoginPanel, Dashboard, main-panel)
+- **Events:** 9 registered events
+- **Subscriptions:** 6 registered subscriptions
+- **API Endpoints:** 4
+- **Dependencies:** 20 Clojure/ClojureScript, 4 npm packages
+
+## Getting Help
+
+For questions about this codebase:
+1. Check this documentation first
+2. Review re-frame documentation for architectural patterns
+3. Inspect browser console for error messages
+4. Use re-frisk to debug state changes
+5. Check Clojure/ClojureScript community resources
+
+---
+
+**Last Updated:** 2025-11-23
+**Version:** 0.1.0-SNAPSHOT
+**Status:** Authentication complete, ready for feature development
